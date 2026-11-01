@@ -45,17 +45,23 @@ const spkOK=!!window.speechSynthesis;
 function clrTm(){(S.tm||[]).forEach(clearTimeout);S.tm=[]}
 function wrapW(el,txt){let h='',i=0;txt.replace(/\S+/g,(w,o)=>{h+=esc(txt.slice(i,o))+'<span class="w" data-o="'+o+'">'+esc(w)+'</span>';i=o+w.length;return w});el.innerHTML=h+esc(txt.slice(i));return[...el.querySelectorAll('.w')]}
 function spkStop(){clrTm();S.tok=(S.tok||0)+1;S.spk=0;if(spkOK)speechSynthesis.cancel()}
-function spk(list,reps=1,fw){if(!spkOK)return;spkStop();const t=S.tok,q=[];list.forEach(v=>{for(let r=1;r<=reps;r++)q.push([v,r])});let i=0;const go=()=>{if(t!==S.tok)return;if(i>=q.length){S.spk=0;render();return}const [v,r]=q[i++],u=new SpeechSynthesisUtterance((r===1?v.n+'절. ':'')+(fw?v.t.split(/\s+/)[0]:v.t));S.cnt=r;S.tot=reps;u.lang='ko-KR';u.rate=.9;const ko=speechSynthesis.getVoices().find(x=>x.lang&&x.lang.startsWith('ko'));if(ko)u.voice=ko;S.spk=v.n;u.onend=()=>{if(t===S.tok)go()};u.onerror=()=>{if(t===S.tok){S.spk=0;render()}};clrTm();if(S.tab==='read')S.rn=v.n;render();const hl=document.querySelector('.v.spk');if(hl)hl.scrollIntoView({block:'center',behavior:'smooth'});
+function spk(list,reps=1,fw){if(!spkOK)return;spkStop();const t=S.tok,q=[];list.forEach(v=>{for(let r=1;r<=reps;r++)q.push([v,r])});let i=0;const go=()=>{if(t!==S.tok)return;if(i>=q.length){S.spk=0;render();return}const [v,r]=q[i++],u=new SpeechSynthesisUtterance((r===1?v.n+'절. ':'')+(fw?v.t.split(/\s+/)[0]:v.t));S.cnt=r;S.tot=reps;u.lang='ko-KR';u.rate=getRate();u.pitch=1;const ko=pickVoice();if(ko)u.voice=ko;S.spk=v.n;u.onend=()=>{if(t===S.tok)go()};u.onerror=()=>{if(t===S.tok){S.spk=0;render()}};clrTm();if(S.tab==='read')S.rn=v.n;render();const hl=document.querySelector('.v.spk');if(hl)hl.scrollIntoView({block:'center',behavior:'smooth'});
  const tg=document.querySelector('.v.spk .t')||document.querySelector('.spkt span');
  if(tg){const pre=r===1?(v.n+'절. ').length:0,ws=wrapW(tg,fw?v.t.split(/\s+/)[0]:v.t),mark=k=>ws.forEach((x,j)=>x.classList.toggle('hw',j===k));let got=false;
   u.onboundary=e=>{if(t!==S.tok||(e.name&&e.name!=='word'))return;const o=e.charIndex-pre;if(o<0)return;got=true;clrTm();let k=0;ws.forEach((x,j)=>{if(+x.dataset.o<=o)k=j});mark(k)};
-  let acc=pre*200;ws.forEach((x,j)=>{S.tm.push(setTimeout(()=>{if(!got&&t===S.tok)mark(j)},acc));acc+=(x.textContent.length+1)*200})}
+  const ms=190/u.rate;let acc=pre*ms;ws.forEach((x,j)=>{S.tm.push(setTimeout(()=>{if(!got&&t===S.tok)mark(j)},acc));acc+=(x.textContent.length+1)*ms})}
  speechSynthesis.speak(u)};go()}
 const rc=n=>(S.spk===n?' spk':'')+((S.pk||{})[n]?' sel':'');
 const pkList=()=>{const pk=S.pk||{},p=P(S.me);return V.filter(v=>pk[v.n]&&(S.tab!=='mark'||p.marks['v'+v.n]))};
 const pkBar=()=>{if(!spkOK)return'';const n=pkList().length;return `<div class="row" style="margin:6px 0"><button data-a="pkall">전체 선택</button><button data-a="pkclr">선택 해제</button><button data-a="spsel" class="${S.spk?'on':'p'}">${S.spk?'⏹ 중지':`▶ 선택 듣기 (${n}절 × ${gr()}회)`}</button></div>`};
 const gr=()=>{if(!S.rep){try{S.rep=+localStorage.getItem('rome-rep')||1}catch(_){S.rep=1}}return S.rep};
-const repSel=()=>spkOK?`<div class="row" style="margin:8px 0"><span class="mu">반복 듣기</span>${[1,3,5,10].map(n=>`<button data-a="rep" data-n="${n}" class="${gr()===n?'p':''}">${n}회</button>`).join('')}</div>`:'';
+const koVoices=()=>spkOK?speechSynthesis.getVoices().filter(x=>/^ko/i.test((x.lang||'').replace('_','-'))):[];
+function vScore(x){const n=x.name;let s=0;if(/natural|neural|online/i.test(n))s+=10;if(/premium|enhanced|프리미엄|고품질/i.test(n))s+=8;if(/google/i.test(n))s+=6;if(/sunhi|injoon|yuna|sora|flo|heami/i.test(n))s+=4;if(/compact|espeak/i.test(n))s-=5;return s}
+function pickVoice(){const vs=koVoices();let sv='';try{sv=localStorage.getItem('rome-vc')||''}catch(_){}return vs.find(x=>x.name===sv)||[...vs].sort((a,b)=>vScore(b)-vScore(a))[0]||null}
+function getRate(){let r=0;try{r=+localStorage.getItem('rome-rt')}catch(_){}return r||0.95}
+if(spkOK)speechSynthesis.onvoiceschanged=()=>render();
+const voiceBar=()=>{const vs=koVoices(),cur=pickVoice(),rt=getRate(),st='font:inherit;padding:6px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);min-width:0',R=[[0.8,'느리게'],[0.95,'보통'],[1.1,'빠르게']],near=R.reduce((a,b)=>Math.abs(b[0]-rt)<Math.abs(a[0]-rt)?b:a);return `<div class="row" style="margin:4px 0;flex-wrap:nowrap"><span class="mu">목소리</span><select id="vc" style="${st};flex:1">${vs.length?vs.map(x=>`<option value="${esc(x.name)}" ${cur&&cur.name===x.name?'selected':''}>${esc(x.name.replace(/ - .*$/,''))}</option>`).join(''):'<option>한국어 음성 없음</option>'}</select><select id="rt" style="${st}">${R.map(r=>`<option value="${r[0]}" ${r===near?'selected':''}>${r[1]}</option>`).join('')}</select></div>`};
+const repSel=()=>spkOK?`<div class="row" style="margin:8px 0"><span class="mu">반복 듣기</span>${[1,3,5,10].map(n=>`<button data-a="rep" data-n="${n}" class="${gr()===n?'p':''}">${n}회</button>`).join('')}</div>${voiceBar()}`:'';
 const chk=(p,n)=>S.me?`<button data-a="vs" data-n="${n}" class="${p.verses['v'+n]?'on':''}" title="암송 체크">${p.verses['v'+n]?'✓ 암송':'암송'}</button>`:'';
 const pkc=n=>spkOK?`<input type="checkbox" style="width:20px;margin-top:5px" data-a="pk" data-n="${n}" ${(S.pk||{})[n]?'checked':''} title="듣기 선택">`:'';
 const spb=n=>spkOK?`<button data-a="sp" data-n="${n}" class="${S.spk===n?'on':''}" title="듣기">${S.spk===n?'⏹'+(S.tot>1?' '+S.cnt+'/'+S.tot:''):'🔊'}</button>`:'';
@@ -124,7 +130,7 @@ document.addEventListener('click',async e=>{const el=e.target.closest('[data-a]'
  else if(a==='del'){const i=el.dataset.i;if(S.cd!==i){S.cd=i;return render()}S.cd=null;delete S.users[i];await db.doc('users/'+i).delete();await db.doc('progress/'+i).delete().catch(()=>{})}
  else if(a==='apw'){const pw=v('#ap');if(pw){S.cfg.adminPw=pw;await db.doc('config/app').set({adminPw:pw});S.err='관리자 비밀번호를 변경했습니다.'}}
  render()});
-document.addEventListener('change',e=>{if(e.target.id==='jv')goV(+e.target.value);if(e.target.id==='jr')goR(+e.target.value)});
+document.addEventListener('change',e=>{if(e.target.id==='jv')goV(+e.target.value);if(e.target.id==='jr')goR(+e.target.value);if(e.target.id==='vc'||e.target.id==='rt'){try{localStorage.setItem(e.target.id==='vc'?'rome-vc':'rome-rt',e.target.value)}catch(_){}}});
 let tx=null,ty=0;document.addEventListener('touchstart',e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY},{passive:true});
 document.addEventListener('touchend',e=>{if(tx===null)return;const dx=e.changedTouches[0].clientX-tx,dy=e.changedTouches[0].clientY-ty;tx=null;if(Math.abs(dx)>70&&Math.abs(dy)<50&&S.tab==='read'&&!(S.admin&&!S.av)&&isOne()&&!e.target.closest('select,input,button'))goR((S.rn||1)+(dx<0?1:-1))},{passive:true});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&$('#lp')&&e.target.id==='lp')login($('#ln').value,$('#lp').value)});
