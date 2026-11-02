@@ -32,9 +32,13 @@ const nDays=id=>Object.keys(P(id).days||{}).length,nV=id=>Object.keys(P(id).vers
 function streak(id){let d=new Date(),c=0,D=P(id).days||{};if(!D[ymd(d)])d.setDate(d.getDate()-1);while(D[ymd(d)]){c++;d.setDate(d.getDate()-1)}return c}
 const bar=(a,b)=>`<div class="bar"><i style="width:${b?Math.round(a/b*100):0}%"></i></div>`;
 async function save(id,fn){const p=JSON.parse(JSON.stringify(P(id)));p.days=p.days||{};p.verses=p.verses||{};p.marks=p.marks||{};p.log=p.log||{};fn(p);S.prog[id]=p;(S.hold=S.hold||{})[id]=Date.now();render();try{await db.doc('progress/'+id).set(p)}catch(e){S.err='저장 실패: 쓰기 권한(Contributor 이상)이 필요합니다.';render()}}
-function login(name,pw){name=name.trim();if(name.toLowerCase()==='admin'){if(pw===apw()){S.admin=true;S.me=null;S.av=false;S.showLogin=false;S.err=''}else S.err='관리자 비밀번호가 올바르지 않습니다.'}
- else{const e=Object.entries(S.users).find(([i,u])=>u.name===name);if(e&&e[1].pw===pw){S.me=e[0];S.admin=false;S.err='';S.showLogin=false;S.tab='today';S.pin=null;try{localStorage.setItem('rome',JSON.stringify([name,pw]))}catch(_){}}else S.err='이름 또는 비밀번호가 올바르지 않습니다.'}
+function login(name,pw){name=name.trim();if(name.toLowerCase()==='admin'){if(pw===apw()){S.admin=true;S.me=null;S.av=false;S.showLogin=false;S.err='';try{localStorage.setItem('rome',JSON.stringify({a:1,p:pw}))}catch(_){}}else S.err='관리자 비밀번호가 올바르지 않습니다.'}
+ else{const e=Object.entries(S.users).find(([i,u])=>u.name===name);if(e&&e[1].pw===pw){S.me=e[0];S.admin=false;S.err='';S.showLogin=false;S.tab='today';S.pin=null;try{localStorage.setItem('rome',JSON.stringify({u:name,p:pw}))}catch(_){}}else S.err='이름 또는 비밀번호가 올바르지 않습니다.'}
  render()}
+function hasSes(){try{return !!localStorage.getItem('rome')}catch(_){return false}}
+function autoLogin(){if(S.tried||!S.ready||!S.cfgReady||S.me||S.admin)return;S.tried=true;let s=null;try{s=JSON.parse(localStorage.getItem('rome')||'null')}catch(_){}if(!s)return;if(Array.isArray(s))s={u:s[0],p:s[1]};let ok=false;
+ if(s.a){if(s.p===apw()){S.admin=true;S.me=null;S.av=false;ok=true}}else if(s.u){const e=Object.entries(S.users).find(([i,u])=>u.name===s.u);if(e&&e[1].pw===s.p){S.me=e[0];S.tab='today';S.pin=null;ok=true}}
+ if(!ok){try{localStorage.removeItem('rome')}catch(_){}}}
 function logout(){S.me=null;S.admin=false;S.av=false;S.pin=null;S.tab='today';S.showLogin=false;try{localStorage.removeItem('rome')}catch(_){}render()}
 const isApp=()=>(window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;
 const instBtn=()=>{if(S.src==='claude'||isApp())return'';const ios=/iphone|ipad|ipod/i.test(navigator.userAgent);if(!S.dip&&!ios)return'';return `<button data-a="inst">📲 앱 설치</button>`+(S.ios&&!S.dip?'<div class="mu" style="flex-basis:100%">아이폰: 사파리 하단 공유 버튼(□↑) → "홈 화면에 추가"를 누르세요.</div>':'')};
@@ -146,6 +150,7 @@ function admTab(){const T=[['users','사용자 관리'],['prog','진도 현황']
 function render(){if(document.activeElement&&(document.activeElement.tagName==='TEXTAREA'||document.activeElement.tagName==='INPUT'&&document.activeElement.type!=='checkbox'))return;const a=$('#app');
  if(!db){a.innerHTML='<div class="card" style="margin-top:40px"><h1>📖 rome · DB 연결</h1><p class="mu">온라인 동기화를 위해 Supabase 프로젝트의 URL과 anon key를 입력하세요. 한 번 연결하면 이 브라우저에 저장되어 계속 접속됩니다. (관리자 설정에서 config.js를 내려받아 index.html 옆에 두면 모든 기기에서 자동 접속)</p><div class="row" style="flex-direction:column;align-items:stretch"><input id="sbu" placeholder="https://xxxx.supabase.co"><input id="sbk" placeholder="anon public key"><button class="p" data-a="fb">연결</button></div></div>';return}
  const er=S.err?`<p style="color:#c0392b">${esc(S.err)}</p>`:'';
+ if(!S.tried&&hasSes()){a.innerHTML='<p class="mu" style="margin:60px 0;text-align:center">로그인 정보를 확인하는 중…</p>';return}
  if(!S.me&&(S.admin?S.av:!S.showLogin)){const T2=[['today','오늘의 암송구절'],['read','로마서8장'],['first','첫단어']];if(S.tab!=='read'&&S.tab!=='first')S.tab='today';a.innerHTML=`<div class="row sp"><h1>📖 로마서8장</h1><div class="row"><span class="mu">${S.admin?'관리자 · 본문 보기':'guest'}</span>${instBtn()}${S.src==='supabase'&&S.err?'<button data-a="cfgrst">연결 재설정</button>':''}${S.admin?'<button data-a="out">로그아웃</button><button class="p" data-a="av0">← 관리자 화면</button>':'<button class="p" data-a="li">로그인</button>'}</div></div><div class="tabs">${T2.map(t=>`<button data-a="tab" data-t="${t[0]}" class="${S.tab===t[0]?'p':''}">${t[1]}</button>`).join('')}</div>`+(S.tab==='read'?readTab():S.tab==='first'?firstTab():todayVerse()+(S.admin?'<p hidden':'<p')+' class="mu">로그인하면 내가 암송한 다음 구절부터 표시되고 진도가 저장됩니다.</p>');return}
  if(!S.me&&!S.admin){a.innerHTML=`<div class="card" style="margin-top:40px"><h1>📖 로마서8장</h1><p class="mu">암송 · 일자별 체크</p><div class="row" style="flex-direction:column;align-items:stretch"><input id="ln" placeholder="이름 (관리자는 admin)"><input id="lp" type="password" placeholder="비밀번호"><button class="p" data-a="login">로그인</button><button data-a="gu">← 본문으로 돌아가기</button></div>${er}${S.ready?'':'<p class="mu">동기화 중…</p>'}</div>`;return}
  if(S.admin){a.innerHTML=head('관리자')+'<div class="row" style="margin:8px 0"><button data-a="av1">📖 본문 보기</button></div>'+er+admTab();return}
@@ -190,8 +195,8 @@ try{db=await claude.use('db')}catch(_){}
  render();if(!db)return;
  const fill=(s,o)=>{for(const k in o)delete o[k];(s.docs||[]).forEach(d=>o[d.id]=d.data())},err=e=>{S.err='DB 오류: '+(e&&e.message||e);render()};
  db.collection('users').onSnapshot(s=>{fill(s,S.users);S.ready=true;
-  if(!S.me&&!S.admin)try{const[n,p]=JSON.parse(localStorage.getItem('rome')||'null')||[];if(n)login(n,p)}catch(_){}render()},err);
+  autoLogin();render()},err);
  db.collection('progress').onSnapshot(s=>{const keep={};for(const k in (S.hold||{}))if(Date.now()-S.hold[k]<5000&&S.prog[k])keep[k]=S.prog[k];fill(s,S.prog);Object.assign(S.prog,keep);S.pready=true;render()},err);
- db.doc('config/app').onSnapshot(s=>{S.cfg=(s.data&&s.data())||{};render()},err);
- setTimeout(()=>{if(!S.ready){S.err='서버에 연결하지 못했습니다. 잠시 후 다시 확인하세요.';render()}},10000)})();
+ db.doc('config/app').onSnapshot(s=>{S.cfg=(s.data&&s.data())||{};S.cfgReady=true;autoLogin();render()},err);
+ setTimeout(()=>{if(!S.tried){S.tried=true;render()}if(!S.ready){S.err='서버에 연결하지 못했습니다. 잠시 후 다시 확인하세요.';render()}},10000)})();
 </script></body></html>
