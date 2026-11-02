@@ -90,14 +90,19 @@ async function recStart(n){try{mstream=await navigator.mediaDevices.getUserMedia
 function recStop(){if(mr&&mr.state!=='inactive')mr.stop()}
 async function recPlay(n){const b=await recGet(n);if(b)new Audio(URL.createObjectURL(b)).play()}
 function sim(a,b){const f=s=>[...s.replace(/[\s.,!?·…'"“”‘’\-]/g,'')],x=f(a),y=f(b);if(!y.length)return 0;const d=Array.from({length:x.length+1},(_,i)=>[i]);for(let j=1;j<=y.length;j++)d[0][j]=j;for(let i=1;i<=x.length;i++)for(let j=1;j<=y.length;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(x[i-1]===y[j-1]?0:1));return Math.max(0,Math.round((1-d[x.length][y.length]/Math.max(x.length,y.length))*100))}
+function srMsg(){const R=S.rec;if(!R)return'';const s=Math.floor((Date.now()-(R.st==='sc'?R.t1:R.t0))/1000);return R.st==='sc'?'채점 중입니다… '+s+'초 경과'+(s>=8?' · 시간이 오래 걸리고 있어요. 조금 더 기다리거나 [채점 취소]를 눌러 주세요.':' · 잠시만 기다려 주세요.'):'듣고 있어요… '+s+'초 · 구절을 외워서 말해 보세요'}
+function srEnd(note){clearInterval(S.tmr);S.tmr=null;S.sr=null;S.rec=null;if(note)S.note=note;render()}
 function srStart(n,txt){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){S.err='이 브라우저는 음성 인식을 지원하지 않습니다. (크롬·엣지·사파리 권장)';return render()}
- const r=new SR();r.lang='ko-KR';r.interimResults=false;r.maxAlternatives=1;S.sr=r;S.rec={n,st:'sr'};S.score=null;S.err='';
- r.onresult=e=>{const t=e.results[0][0].transcript,pct=sim(t,txt);S.score={n,pct,t};if(pct>=80)save(S.me,p=>{p.verses['v'+n]=1;const d=TD;p.log[d]=p.log[d]||{};p.log[d]['v'+n]=1;p.days[d]=1})};
- r.onerror=e=>{S.err='음성 인식 오류: '+(e.error==='not-allowed'?'마이크 권한이 필요합니다.':e.error)};r.onend=()=>{S.rec=null;render()};
- try{r.start()}catch(_){S.rec=null}render()}
-function srStop(){const r=S.sr;S.sr=null;S.rec=null;if(r){try{r.stop()}catch(_){try{r.abort()}catch(__){}}}render()}
+ const r=new SR();r.lang='ko-KR';r.interimResults=false;r.maxAlternatives=1;S.sr=r;S.rec={n,st:'sr',t0:Date.now()};S.score=null;S.note=null;S.err='';
+ r.onresult=e=>{if(S.sr!==r)return;const t=e.results[0][0].transcript,pct=sim(t,txt);S.score={n,pct,t};srEnd();if(pct>=80)save(S.me,p=>{p.verses['v'+n]=1;const d=TD;p.log[d]=p.log[d]||{};p.log[d]['v'+n]=1;p.days[d]=1})};
+ r.onaudioend=()=>{if(S.sr===r&&S.rec&&S.rec.st==='sr'){S.rec.st='sc';S.rec.t1=Date.now();render()}};
+ r.onerror=e=>{if(S.sr!==r)return;S.err='음성 인식 오류: '+(e.error==='not-allowed'?'마이크 권한이 필요합니다.':e.error);srEnd()};
+ r.onend=()=>{if(S.sr===r)srEnd({n,t:'인식된 내용이 없습니다. 마이크에 가까이 대고 다시 말해 보세요.'})};
+ S.tmr=setInterval(()=>{const el=document.getElementById('srm');if(el)el.textContent=srMsg();if(S.rec&&S.rec.st==='sc'&&Date.now()-S.rec.t1>25000){const q=S.sr;S.sr=null;try{q.abort()}catch(_){}srEnd({n,t:'채점 시간이 너무 오래 걸려 취소했습니다. 다시 시도해 주세요.'})}},500);
+ try{r.start()}catch(_){srEnd()}render()}
+function srStop(){const r=S.sr;if(!r)return srEnd();if(S.rec&&S.rec.st==='sr'){S.rec.st='sc';S.rec.t1=Date.now();try{r.stop()}catch(_){}render()}else{const n=S.rec?S.rec.n:0;S.sr=null;try{r.abort()}catch(_){}srEnd({n,t:'채점을 취소했습니다.'})}}
 function recPanel(n){if(!S.me)return'';const R=S.rec&&S.rec.n===n?S.rec.st:null,has=hasRec(n),sc=S.score&&S.score.n===n?S.score:null,dis=S.rec?' disabled':'';
- return `<div style="border-top:1px solid var(--bd);margin-top:10px;padding-top:8px"><b>🎙 내 목소리</b><div class="row" style="margin:8px 0">${R==='rec'?'<button class="p" data-a="rcs">⏹ 녹음 중지</button>':`<button data-a="rcb" data-n="${n}"${dis}>🎙 녹음</button>`}${has?`<button data-a="rcp" data-n="${n}">▶ 내 녹음 듣기</button><button data-a="rcd" data-n="${n}" title="녹음 삭제">🗑</button>`:''}${R==='sr'?'<button class="p" data-a="srs">⏹ 인식 중지</button>':`<button data-a="srb" data-n="${n}"${dis}>🗣 말해서 채점</button>`}</div>${sc?`<div>일치율 <b>${sc.pct}%</b> ${sc.pct>=80?'<span style="color:var(--ok)">✓ 암송 완료로 체크했습니다</span>':'· 80% 이상이면 자동으로 암송 체크됩니다'}<div class="mu">인식된 내용: ${esc(sc.t)}</div></div>`:`<div class="mu">${R==='rec'?'녹음 중… 구절을 외워서 말해 보세요':R==='sr'?'듣고 있어요… 구절을 외워서 말해 보세요':'말해서 채점: 외워서 말하면 일치율로 암송 여부를 자동 체크합니다'}</div>`}</div>`}
+ return `<div style="border-top:1px solid var(--bd);margin-top:10px;padding-top:8px"><b>🎙 내 목소리</b><div class="row" style="margin:8px 0">${R==='rec'?'<button class="p" data-a="rcs">⏹ 녹음 중지</button>':`<button data-a="rcb" data-n="${n}"${dis}>🎙 녹음</button>`}${has?`<button data-a="rcp" data-n="${n}">▶ 내 녹음 듣기</button><button data-a="rcd" data-n="${n}" title="녹음 삭제">🗑</button>`:''}${R==='sr'||R==='sc'?`<button class="p" data-a="srs">${R==='sc'?'⏹ 채점 취소':'⏹ 인식 중지'}</button>`:`<button data-a="srb" data-n="${n}"${dis}>🗣 말해서 채점</button>`}</div>${sc?`<div>일치율 <b>${sc.pct}%</b> ${sc.pct>=80?'<span style="color:var(--ok)">✓ 암송 완료로 체크했습니다</span>':'· 80% 이상이면 자동으로 암송 체크됩니다'}<div class="mu">인식된 내용: ${esc(sc.t)}</div></div>`:`<div class="mu" id="srm">${R==='rec'?'녹음 중… 구절을 외워서 말해 보세요':R==='sr'||R==='sc'?srMsg():S.note&&S.note.n===n?esc(S.note.t):'말해서 채점: 외워서 말하면 일치율로 암송 여부를 자동 체크합니다'}</div>`}</div>`}
 const curN=()=>S.me?curV().n:(S.gv||1);
 function goV(n){n=Math.max(1,Math.min(V.length,n));spkStop();S.rev={};if(S.me)S.pin={id:S.me,n};else S.gv=n;render()}
 const firstW=t=>t.split(/\s+/)[0];
